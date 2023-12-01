@@ -1,0 +1,19 @@
+{
+  "name": "sigpair-js",
+  "module": "index.ts",
+  "type": "module",
+  "devDependencies": {
+    "bun-types": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5.0.0"
+  },
+  "dependencies": {
+    "@noble/ed25519": "^2.0.0",
+    "@silencelaboratories/two-party-ecdsa-js": "^7.0.0",
+    "@types/ws": "^8.5.10",
+    "@types/wtfnode": "^0.7.3",
+    "sigpair-admin": "git@github.com:silence-laboratories/sigpair-admin-v2.git",
+    "wtfnode": "^0.9.1"
+  }
+}
