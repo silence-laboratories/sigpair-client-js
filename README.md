@@ -1,6 +1,16 @@
 # sigpair-js
 
-Installation
+## Installation
+Authenticate with auth token and setup registry
+```bash
+npm config set -- //registry.npmjs.org/:_authToken=YOU_NPM_AUTH_TOKEN
+```
+
+Install 
+
+```bash
+npm install https://github.com/silence-laboratories/sigpair-client-js 
+```
 
 
 
@@ -34,9 +44,9 @@ import {
 import {
   SigpairAdmin,
 } from "sigpair-admin";
-
 async function main() {
 	// Assuming you have a Sigpair Admin running locally at http://localhost:8080
+	// Configured with the following admin token 
   const admin = new SigpairAdmin(
     "1ec3804afc23258f767b9d38825dc7ab0a2ea44ef4adf3254e4d7c6059c3b55a",
     "http://localhost:8080"
