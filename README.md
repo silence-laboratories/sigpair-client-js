@@ -1,15 +1,79 @@
 # sigpair-js
 
-To install dependencies:
+Installation
 
-```bash
-bun install
+
+
+## Example Usage
+
+```typescript
+import * as ed from "@noble/ed25519";
+import {
+  generatePartyKeys,
+} from "@silencelaboratories/two-party-ecdsa-js";
+import {
+  SigpairClient,
+  generateSigningKeys
+} from "sigpair-client";
+
+// Sigpair Admin in JS: https://github.com/silence-laboratories/sigpair-admin-v2
+import {
+  SigpairAdmin,
+} from "sigpair-admin";
+
+import * as ed from "@noble/ed25519";
+import {
+  generatePartyKeys,
+} from "@silencelaboratories/two-party-ecdsa-js";
+import {
+  SigpairClient,
+  generateSigningKeys
+} from "sigpair-client";
+
+// Sigpair Admin in JS: https://github.com/silence-laboratories/sigpair-admin-v2
+import {
+  SigpairAdmin,
+} from "sigpair-admin";
+
+async function main() {
+	// Assuming you have a Sigpair Admin running locally at http://localhost:8080
+  const admin = new SigpairAdmin(
+    "1ec3804afc23258f767b9d38825dc7ab0a2ea44ef4adf3254e4d7c6059c3b55a",
+    "http://localhost:8080"
+  );
+  // Create a new user
+  const userId = await admin.createUser("test");
+  // Generate a signing keypair for the user using convience method. You can also generate a ed25519 keypair yourself.
+  const keypair = await generateSigningKeys();
+  // Generate a new user token for the user, for given user-id and public key and lifetime in seconds
+  const userToken = admin.genUserToken(userId, keypair.publicKey, 60*60);
+
+  // Create a new Sigpair Client
+  const client = new SigpairClient(
+    userToken,
+    keypair.signingKey,
+    "http://localhost:8080"
+  );
+
+  // Generate party keys for keygen
+  const partyKeys = await generatePartyKeys();
+  // Generate a new ECDSA keyshare 
+  const keyshare = await client.genECDSAKey(partyKeys);
+  console.log("Created keyshare: ", keyshare.data.key_id);
+
+  // Generate a random message hash (ONLY for demo purposes. In practice the message MUST be hashed)
+  const msgHash = ed.etc.bytesToHex(crypto.getRandomValues(new Uint8Array(32)));
+
+  // Sign the message hash with the keyshare
+  const sign = await client.genECDSASign(keyshare, msgHash);
+  console.log("Signature: ", sign.sign);
+  // Refresh the keyshare
+  const key2 = await client.refreshECDSAKey(keyshare, partyKeys);
+  console.log("Refreshed keyshare: ", key2.data.key_id);
+}
+
+main();
 ```
 
-To run:
 
-```bash
-bun run index.ts
-```
 
-This project was created using `bun init` in bun v1.0.14. [Bun](https://bun.sh) is a fast all-in-one JavaScript runtime.
