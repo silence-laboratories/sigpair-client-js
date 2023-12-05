@@ -8,6 +8,12 @@ import {
   SignWithRecId,
   generatePartyKeys,
 } from "@silencelaboratories/two-party-ecdsa-js";
+import {
+  P1Keygen as ed_P1Keygen,
+  P1Signer as ed_P1Signer,
+  P1Keyshare as ed_P1Keyshare,
+  initWasm,
+} from "@silencelaboratories/two-party-eddsa-js";
 /**
  * Message type used for communication between the client and server
  */
@@ -212,6 +218,139 @@ export class SigpairClient {
     return signature;
   }
 
+  async genEdDSAKey() {
+    const socket = await this.connectSocket("/v2/schnorr/keygen");
+    socket.onclose = (event) => {};
+
+    socket.onerror = (event) => {
+      throw new Error("WebSocket error: " + event);
+    };
+
+    await initWasm.ready();
+    const p1 = ed_P1Keygen.init();
+    const msg1 = p1.genMsg1();
+    await sendMessage(msg1.msg_data, this.signingKey, socket);
+    const message = await receiveMessage(socket, 10000);
+
+    const msg3 = p1.processMsg2({
+      msg_data: message,
+      msg_type: "KeyMsg2",
+      instance_id: msg1.instance_id,
+    });
+
+    await sendMessage(msg3.msg_data, this.signingKey, socket);
+
+    const msg4 = await receiveMessage(socket, 10000);
+
+    const [keyshare, msg5] = p1.processMsg4({
+      msg_data: msg4,
+      instance_id: msg1.instance_id,
+      msg_type: "KeyMsg4",
+    });
+
+    await sendMessage(msg5.msg_data, this.signingKey, socket);
+
+    socket.close();
+    return keyshare;
+  }
+
+  async refreshEdDSAKey(curr_keyshare: ed_P1Keyshare) {
+    const socket = await this.connectSocket("/v2/schnorr/keygen");
+    socket.onclose = (event) => {};
+
+    socket.onerror = (event) => {
+      throw new Error("WebSocket error: " + event);
+    };
+
+    await initWasm.ready();
+    const p1 = curr_keyshare.genRefreshInstance();
+    const msg1 = p1.genMsg1();
+    await sendMessage(msg1.msg_data, this.signingKey, socket);
+    const message = await receiveMessage(socket, 10000);
+
+    const msg3 = p1.processMsg2({
+      msg_data: message,
+      msg_type: "KeyMsg2",
+      instance_id: msg1.instance_id,
+    });
+
+    await sendMessage(msg3.msg_data, this.signingKey, socket);
+
+    const msg4 = await receiveMessage(socket, 10000);
+
+    const [ephKey, msg5] = p1.processMsg4({
+      msg_data: msg4,
+      instance_id: msg1.instance_id,
+      msg_type: "KeyMsg4",
+    });
+
+    await sendMessage(msg5.msg_data, this.signingKey, socket);
+
+    const newKey = curr_keyshare.refresh(ephKey);
+
+    socket.close();
+    return newKey;
+  }
+
+  async genEdDSASign(keyshare: ed_P1Keyshare, messageHash: string) {
+    if (messageHash.startsWith("0x")) {
+      messageHash = messageHash.slice(2);
+    }
+    const msgHashBytes = ed.etc.hexToBytes(messageHash);
+    if (msgHashBytes.length != 32) {
+      throw new Error("Message hash must be 32 bytes");
+    }
+
+    const socket = await this.connectSocket("/v2/schnorr/sign");
+
+    socket.onclose = async (event) => {};
+
+    socket.onerror = (event) => {
+      throw new Error("WebSocket error: " + event);
+    };
+
+    await initWasm.ready();
+    const p1 = ed_P1Signer.init(keyshare);
+    const msg1 = p1.genMsg1();
+    const msgReq: SignMessageRequest = {
+      // @ts-ignore
+      key_id: keyshare.share.key_id,
+      chain_path: "m",
+      message_hash: messageHash,
+      sign_msg1: Buffer.from(msg1.msg_data).toString("base64"),
+    };
+
+    const msgReq2 = Buffer.from(JSON.stringify(msgReq));
+
+    await waitForSocketOpen(socket);
+    await sendMessage(msgReq2, this.signingKey, socket);
+
+    const message = await receiveMessage(socket, 10000);
+
+    const msg3 = p1.processMsg2({
+      msg_data: message,
+      msg_type: "SignMsg2",
+      instance_id: msg1.instance_id,
+    });
+
+    await sendMessage(msg3.msg_data, this.signingKey, socket);
+
+    const partialSign = await receiveMessage(socket, 10000);
+
+    const msg5 = p1.partialSign(ed.etc.hexToBytes(messageHash));
+
+    const signature = p1.completeSign({
+      msg_data: partialSign,
+      msg_type: "PartialSign",
+      instance_id: msg1.instance_id,
+    });
+
+    sendMessage(msg5.msg_data, this.signingKey, socket);
+
+    socket.close();
+    return signature;
+  }
+
   private async connectSocket(route: string): Promise<WebSocket> {
     const socket = new WebSocket(
       `ws://${this.baseUrl.hostname}:${this.baseUrl.port}${route}`,
@@ -252,7 +391,7 @@ async function receiveMessage(
   socket: WebSocket,
   timeoutMs: number
 ): Promise<number[]> {
-  let timeoutId: NodeJS.Timeout;
+  let timeoutId: Timer;
   return new Promise((resolve, reject) => {
     // Set up a timeout promise that resolves after the specified timeout
     const timeoutPromise = new Promise<number[]>((_, reject) => {
@@ -287,3 +426,58 @@ function waitForSocketOpen(socket: WebSocket): Promise<void> {
     }
   });
 }
+
+// Sigpair Admin in JS: https://github.com/silence-laboratories/sigpair-admin-v2
+// import { SigpairAdmin } from "sigpair-admin";
+
+// async function main() {
+//   // Assuming you have a Sigpair Admin running locally at http://localhost:8080
+//   // Configured with the following admin token
+//   const admin = new SigpairAdmin(
+//     "1ec3804afc23258f767b9d38825dc7ab0a2ea44ef4adf3254e4d7c6059c3b55a",
+//     "http://localhost:8080"
+//   );
+//   // Create a new user
+//   const userId = await admin.createUser("test");
+//   // Generate a signing keypair for the user using convience method. You can also generate a ed25519 keypair yourself.
+//   const keypair = await generateSigningKeys();
+//   // Generate a new user token for the user, for given user-id and public key and lifetime in seconds
+//   const userToken = admin.genUserToken(userId, keypair.publicKey, 60 * 60);
+
+//   // Create a new Sigpair Client
+//   const client = new SigpairClient(
+//     userToken,
+//     keypair.signingKey,
+//     "http://localhost:8080"
+//   );
+
+//   // Generate party keys for keygen
+//   const partyKeys = await generatePartyKeys();
+//   // Generate a new ECDSA keyshare
+//   const keyshare = await client.genECDSAKey(partyKeys);
+//   console.log("Created keyshare: ", keyshare.data.key_id);
+
+//   // Generate a random message hash (ONLY for demo purposes. In practice the message MUST be hashed)
+//   const msgHash = ed.etc.bytesToHex(crypto.getRandomValues(new Uint8Array(32)));
+
+//   // Sign the message hash with the keyshare
+//   const sign = await client.genECDSASign(keyshare, msgHash);
+//   console.log("Signature: ", sign.sign);
+//   // Refresh the ECDSA keyshare
+//   const key2 = await client.refreshECDSAKey(keyshare, partyKeys);
+//   console.log("Refreshed keyshare: ", key2.data.key_id);
+
+//   // Generate a new EdDSA keyshare
+//   const ed_key = await client.genEdDSAKey();
+//   console.log("Created EdDSA: ", ed_key.share.key_id);
+
+//   // Sign the message hash with the keyshare
+//   const sign2 = await client.genEdDSASign(ed_key, msgHash);
+//   console.log("EdDSA Signature: ", Buffer.from(sign2).toString("base64"));
+
+//   // Refresh the EdDSA keyshare
+//   const new_key = await client.refreshEdDSAKey(ed_key);
+//   console.log("Refreshed EdDSA: ", new_key.share.key_id);
+// }
+
+// main();

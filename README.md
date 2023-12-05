@@ -41,6 +41,7 @@ import {
 } from "sigpair-client";
 
 // Sigpair Admin in JS: https://github.com/silence-laboratories/sigpair-admin-v2
+// You can use an admin instance in any language, as long as it implements the Sigpair Admin API
 import {
   SigpairAdmin,
 } from "sigpair-admin";
@@ -80,6 +81,17 @@ async function main() {
   // Refresh the keyshare
   const key2 = await client.refreshECDSAKey(keyshare, partyKeys);
   console.log("Refreshed keyshare: ", key2.data.key_id);
+  // Generate a new EdDSA keyshare
+  const ed_key = await client.genEdDSAKey();
+  console.log("Created EdDSA: ", ed_key.share.key_id);
+
+  // Sign the message hash with the keyshare
+  const sign2 = await client.genEdDSASign(ed_key, msgHash);
+  console.log("EdDSA Signature: ", Buffer.from(sign2).toString("base64"));
+
+  // Refresh the EdDSA keyshare
+  const new_key = await client.refreshEdDSAKey(ed_key);
+  console.log("Refreshed EdDSA: ", new_key.share.key_id);
 }
 
 main();
