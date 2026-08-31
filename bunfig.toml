@@ -1,2 +1,4 @@
 [install]
 registry = { url = "https://registry.npmjs.org", token = "$npm_token" }
+minimumReleaseAge = 604800
+minimumReleaseAgeExcludes = ["@silencelaboratories/walletprovider-sdk"]
